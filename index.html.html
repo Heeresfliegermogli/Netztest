@@ -1,0 +1,497 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ARGUS Netztest</title>
+<style>
+  :root {
+    --bg: #f4f5f2; --card: #ffffff; --ink: #16191d; --muted: #5b6470; --line: #d9ddd6;
+    --accent: #2b4a2f;
+    --ok-bg: #e2f2e6; --ok: #17602c;
+    --warn-bg: #fff1d1; --warn: #7a4d00;
+    --fail-bg: #fde4e0; --fail: #9b2017;
+    --info-bg: #eceff2; --info: #39424d;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 16px/1.45 "Segoe UI", system-ui, -apple-system, Arial, sans-serif; }
+  header { background: var(--accent); color: #fff; padding: 18px 24px; }
+  header h1 { margin: 0; font-size: 22px; letter-spacing: .02em; }
+  header p { margin: 4px 0 0; opacity: .85; font-size: 14px; }
+  main { max-width: 1100px; margin: 0 auto; padding: 20px 16px 48px; display: grid; gap: 16px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 16px 18px; }
+  .card h2 { margin: 0 0 10px; font-size: 17px; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  label { font-weight: 600; }
+  input[type=text] { font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; min-width: 260px; flex: 1 1 260px; }
+  button { font: inherit; font-weight: 600; padding: 9px 14px; border-radius: 6px; border: 1px solid var(--accent);
+           background: var(--accent); color: #fff; cursor: pointer; min-height: 40px; }
+  button.sec { background: #fff; color: var(--accent); }
+  button:disabled { opacity: .5; cursor: default; }
+  #progress { color: var(--muted); font-size: 14px; }
+  #summary { font-size: 17px; }
+  #summary .big { font-size: 20px; font-weight: 700; margin-bottom: 6px; }
+  .tablewrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+  td.group { font-weight: 700; background: #f7f8f6; }
+  .pill { display: inline-block; min-width: 92px; text-align: center; font-weight: 700; font-size: 13px;
+          padding: 3px 8px; border-radius: 999px; letter-spacing: .04em; }
+  .ok   { background: var(--ok-bg);   color: var(--ok); }
+  .warn { background: var(--warn-bg); color: var(--warn); }
+  .fail { background: var(--fail-bg); color: var(--fail); }
+  .info { background: var(--info-bg); color: var(--info); }
+  .wait { background: var(--info-bg); color: var(--muted); }
+  td a { color: var(--accent); word-break: break-all; }
+  .muted { color: var(--muted); font-size: 14px; }
+  canvas { display: block; width: 100%; max-width: 480px; height: 120px; background: #1d2620; border-radius: 6px; }
+  textarea { width: 100%; min-height: 220px; font: 13px/1.4 Consolas, "Courier New", monospace; padding: 10px;
+             border: 1px solid var(--line); border-radius: 6px; }
+  .noscript { background: var(--fail-bg); color: var(--fail); padding: 20px; font-size: 18px; font-weight: 700; }
+  .childnote { background: var(--ok-bg); color: var(--ok); padding: 24px; font-size: 20px; font-weight: 700; }
+</style>
+</head>
+<body>
+<noscript><div class="noscript">JavaScript ist auf diesem Rechner deaktiviert. Bitte notieren: „JavaScript aus“ – damit scheidet eine Browser-Lösung aus (Variante D bzw. Rücksprache FMZ).</div></noscript>
+
+<header>
+  <h1>ARGUS · Netztest für Dienstrechner</h1>
+  <p>Planspiel Militärethik · Schritt 1 · Stand 18.10.2026 · Diese Seite sendet keine Daten, sie lädt nur kleine Testdateien.</p>
+</header>
+
+<main id="app">
+  <section class="card">
+    <h2>1 · Rechner benennen und Test starten</h2>
+    <div class="row">
+      <label for="ort">Rechner / Ort</label>
+      <input id="ort" type="text" placeholder="z. B. UMSA III Raumrechner, Smartboard, Dienst-PC Hörsaal">
+      <button id="start">Test starten</button>
+    </div>
+    <p id="progress">Der Test läuft ca. 30 Sekunden. Danach Ton- und Fenstertest per Knopf.</p>
+  </section>
+
+  <section class="card" id="summarycard">
+    <h2>2 · Gesamtbild</h2>
+    <div id="summary" class="muted">Noch kein Ergebnis.</div>
+  </section>
+
+  <section class="card">
+    <h2>3 · Einzelergebnisse</h2>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Test</th><th>Ergebnis</th><th>Detail</th></tr></thead>
+        <tbody id="results"></tbody>
+      </table>
+    </div>
+    <p class="muted">OK = erreichbar bzw. vorhanden · PRÜFEN = Antwort erhalten, Inhalt nicht sicher (Link anklicken: echte Seite oder Sperrseite?) · GESPERRT = keine Verbindung · INFO = Hinweis.</p>
+  </section>
+
+  <section class="card">
+    <h2>4 · Grafik-Test (Flashgame-Tauglichkeit)</h2>
+    <canvas id="bench" width="960" height="240"></canvas>
+    <p class="muted" id="benchnote">Läuft automatisch mit dem Test: 1.500 bewegte Objekte, gemessen in Bildern pro Sekunde.</p>
+  </section>
+
+  <section class="card">
+    <h2>5 · Handtests (bitte klicken)</h2>
+    <div class="row">
+      <button class="sec" id="btnTon">Ton abspielen</button>
+      <button class="sec" id="tonJa" disabled>Ton gehört</button>
+      <button class="sec" id="tonNein" disabled>Nichts gehört</button>
+    </div>
+    <p class="muted">Ein kurzer Piepton über die Lautsprecher (für Effekte im Spiel).</p>
+    <div class="row">
+      <button class="sec" id="btnFenster">Zweites Fenster testen</button>
+    </div>
+    <p class="muted">Öffnet dieselbe Seite ein zweites Mal. Prüft, ob zwei Fenster auf einem Rechner miteinander sprechen können (wichtig für Variante C: ein PC, mehrere Bildschirme).</p>
+  </section>
+
+  <section class="card">
+    <h2>6 · Ergebnis sichern</h2>
+    <div class="row">
+      <button id="btnCopy">Ergebnis kopieren</button>
+      <button class="sec" id="btnSave">Als Textdatei speichern</button>
+    </div>
+    <p class="muted">Alternativ den Bildschirm fotografieren. Der Text unten enthält alles für das Testprotokoll.</p>
+    <textarea id="out" readonly></textarea>
+  </section>
+</main>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------- Kind-Fenster für den Fenstertest ----------
+  if (location.hash === "#kind") {
+    document.getElementById("app").innerHTML =
+      '<div class="childnote" id="cn">Zweites Fenster: sende Testnachricht …</div>';
+    var sent = [];
+    try {
+      var bcK = new BroadcastChannel("argus-netztest");
+      bcK.postMessage({ typ: "hallo", zeit: Date.now() });
+      sent.push("BroadcastChannel");
+    } catch (e) {}
+    try {
+      localStorage.setItem("argus-netztest-ping", String(Date.now()));
+      sent.push("localStorage");
+    } catch (e) {}
+    document.getElementById("cn").textContent = sent.length
+      ? "Zweites Fenster: Nachricht gesendet (" + sent.join(", ") + "). Dieses Fenster kann geschlossen werden."
+      : "Zweites Fenster: Senden nicht möglich (BroadcastChannel und localStorage gesperrt).";
+    return;
+  }
+
+  var VERSION = "1.0 (18.10.2026)";
+  var rows = [];          // {id, group, name, status, text, url}
+  var tbody = document.getElementById("results");
+
+  var LABEL = { ok: "OK", warn: "PRÜFEN", fail: "GESPERRT", info: "INFO", wait: "LÄUFT …" };
+
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+  }
+
+  function render() {
+    var html = "", lastGroup = "";
+    rows.forEach(function (r) {
+      if (r.group !== lastGroup) {
+        html += '<tr><td class="group" colspan="3">' + esc(r.group) + "</td></tr>";
+        lastGroup = r.group;
+      }
+      var detail = esc(r.text || "");
+      if (r.url) detail += (detail ? "<br>" : "") + '<a href="' + esc(r.url) + '" target="_blank" rel="noopener">' + esc(r.url) + "</a>";
+      html += "<tr><td>" + esc(r.name) + '</td><td><span class="pill ' + r.status + '">' + LABEL[r.status] +
+              "</span></td><td>" + detail + "</td></tr>";
+    });
+    tbody.innerHTML = html;
+    writeOut();
+  }
+
+  function setRow(id, group, name, status, text, url) {
+    var r = null;
+    for (var i = 0; i < rows.length; i++) if (rows[i].id === id) r = rows[i];
+    if (!r) { r = { id: id }; rows.push(r); }
+    r.group = group; r.name = name; r.status = status; r.text = text; r.url = url || "";
+    render();
+  }
+
+  function get(id) {
+    for (var i = 0; i < rows.length; i++) if (rows[i].id === id) return rows[i];
+    return null;
+  }
+
+  function timeout(ms) {
+    return new Promise(function (_, rej) { setTimeout(function () { rej(new Error("Zeitüberschreitung")); }, ms); });
+  }
+
+  // ---------- Netzproben ----------
+  function probeFetch(url) {
+    var bust = url + (url.indexOf("?") < 0 ? "?" : "&") + "argus=" + Date.now();
+    return Promise.race([fetch(bust, { mode: "cors", cache: "no-store" }), timeout(8000)])
+      .then(function (r) { return { status: "ok", text: "erreichbar (HTTP " + r.status + ")" }; })
+      .catch(function () {
+        return Promise.race([fetch(bust, { mode: "no-cors", cache: "no-store" }), timeout(8000)])
+          .then(function () { return { status: "warn", text: "Antwort erhalten – per Link prüfen, ob echte Seite oder Sperrseite" }; })
+          .catch(function (e) { return { status: "fail", text: "keine Verbindung (" + (e && e.message === "Zeitüberschreitung" ? "Zeitüberschreitung" : "blockiert oder nicht erreichbar") + ")" }; });
+      });
+  }
+
+  function probeImg(url) {
+    return new Promise(function (res) {
+      var img = new Image(), done = false;
+      var t = setTimeout(function () { if (!done) { done = true; res({ status: "fail", text: "Zeitüberschreitung" }); } }, 8000);
+      img.onload = function () { if (!done) { done = true; clearTimeout(t); res({ status: "ok", text: "Bild geladen (" + img.naturalWidth + "×" + img.naturalHeight + ")" }); } };
+      img.onerror = function () { if (!done) { done = true; clearTimeout(t); res({ status: "fail", text: "Bild nicht geladen (gesperrt oder Sperrseite)" }); } };
+      img.src = url + (url.indexOf("?") < 0 ? "?" : "&") + "argus=" + Date.now();
+    });
+  }
+
+  function probeScript(url) {
+    return new Promise(function (res) {
+      window._ = undefined;
+      var s = document.createElement("script"), done = false;
+      var t = setTimeout(function () { finish({ status: "fail", text: "Zeitüberschreitung" }); }, 10000);
+      function finish(v) { if (done) return; done = true; clearTimeout(t); try { window._ = undefined; } catch (e) {} if (s.parentNode) s.parentNode.removeChild(s); res(v); }
+      s.onload = function () {
+        var ok = typeof window._ === "function" && window._.VERSION === "4.17.21";
+        finish(ok ? { status: "ok", text: "Bibliothek geladen und ausgeführt" }
+                  : { status: "warn", text: "Datei kam an, aber nicht die erwartete Bibliothek (Sperrseite?)" });
+      };
+      s.onerror = function () { finish({ status: "fail", text: "Datei nicht geladen" }); };
+      s.src = url;
+      document.head.appendChild(s);
+    });
+  }
+
+  function probeWs(url) {
+    return new Promise(function (res) {
+      var ws, done = false, opened = false;
+      function finish(v) { if (done) return; done = true; try { ws.close(); } catch (e) {} res(v); }
+      var t = setTimeout(function () {
+        finish(opened ? { status: "warn", text: "Verbindung aufgebaut, aber kein Echo" } : { status: "fail", text: "Zeitüberschreitung beim Verbindungsaufbau" });
+      }, 8000);
+      try { ws = new WebSocket(url); } catch (e) { clearTimeout(t); return res({ status: "fail", text: "WebSocket nicht erlaubt" }); }
+      ws.onopen = function () { opened = true; try { ws.send("argus-test"); } catch (e) {} };
+      ws.onmessage = function () { clearTimeout(t); finish({ status: "ok", text: "Verbindung und Echo funktionieren" }); };
+      ws.onerror = function () { clearTimeout(t); finish({ status: "fail", text: "Verbindung abgelehnt oder blockiert" }); };
+    });
+  }
+
+  // ---------- Lokale Fähigkeiten ----------
+  function browserName() {
+    var ua = navigator.userAgent, m;
+    if ((m = ua.match(/Edg\/([\d.]+)/))) return "Microsoft Edge " + m[1];
+    if ((m = ua.match(/Firefox\/([\d.]+)/))) return "Firefox " + m[1];
+    if ((m = ua.match(/Chrome\/([\d.]+)/))) return "Chrome " + m[1];
+    if ((m = ua.match(/Version\/([\d.]+).*Safari/))) return "Safari " + m[1];
+    return "unbekannt";
+  }
+
+  function localChecks() {
+    var G = "Dieser Rechner";
+    var mode = location.protocol === "file:" ? "lokale Datei (file://)" : "online über " + location.host;
+    setRow("mode", G, "Seite geöffnet als", "info", mode);
+    setRow("js", G, "JavaScript", "ok", "läuft");
+    setRow("browser", G, "Browser", "info", browserName());
+    setRow("screen", G, "Bildschirm / Fenster", "info",
+      screen.width + "×" + screen.height + " (Skalierung " + (window.devicePixelRatio || 1) + "), Fenster " + window.innerWidth + "×" + window.innerHeight);
+    setRow("touch", G, "Touch (Smartboard)", "info", (navigator.maxTouchPoints || 0) > 0 ? "Touch vorhanden (" + navigator.maxTouchPoints + " Punkte)" : "kein Touch erkannt");
+
+    var ls = false;
+    try { localStorage.setItem("argus-netztest", "1"); ls = localStorage.getItem("argus-netztest") === "1"; localStorage.removeItem("argus-netztest"); } catch (e) {}
+    setRow("ls", G, "Lokaler Speicher", ls ? "ok" : "warn", ls ? "verfügbar" : "gesperrt – Spielstand nur im Arbeitsspeicher");
+
+    setRow("bc", G, "Fenster-Kommunikation (Funktion)", typeof BroadcastChannel === "function" ? "ok" : "warn",
+      typeof BroadcastChannel === "function" ? "BroadcastChannel vorhanden – Praxistest in Abschnitt 5" : "nicht vorhanden");
+
+    var gl = null, gl2 = false, renderer = "";
+    try {
+      var c = document.createElement("canvas");
+      gl = c.getContext("webgl2"); gl2 = !!gl;
+      if (!gl) gl = c.getContext("webgl") || c.getContext("experimental-webgl");
+      if (gl) {
+        var ext = gl.getExtension("WEBGL_debug_renderer_info");
+        renderer = ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : "";
+      }
+    } catch (e) {}
+    setRow("webgl", G, "WebGL (Grafikbeschleunigung)", gl ? "ok" : "warn",
+      gl ? (gl2 ? "WebGL 2" : "WebGL 1") + (renderer ? " · " + renderer : "") : "nicht verfügbar – Spiel muss mit einfacher Canvas-Grafik auskommen");
+
+    setRow("fps", G, "Animation (1.500 Objekte)", "wait", "Messung läuft …");
+    setRow("audio", G, "Tonausgabe (Funktion)", (window.AudioContext || window.webkitAudioContext) ? "info" : "warn",
+      (window.AudioContext || window.webkitAudioContext) ? "vorhanden – Hörtest in Abschnitt 5" : "nicht vorhanden");
+  }
+
+  // ---------- Grafik-Benchmark ----------
+  function bench() {
+    return new Promise(function (res) {
+      var cv = document.getElementById("bench"), ctx = cv.getContext("2d");
+      if (!ctx) { setRow("fps", "Dieser Rechner", "Animation (1.500 Objekte)", "fail", "Canvas nicht verfügbar"); return res(); }
+      var W = cv.width, H = cv.height, N = 1500, obj = [];
+      for (var i = 0; i < N; i++) obj.push({ x: Math.random() * W, y: Math.random() * H, vx: (Math.random() - .5) * 4, vy: (Math.random() - .5) * 4, c: i % 3 });
+      var cols = ["#c9a227", "#7fae6a", "#d0573f"], frames = 0, t0 = performance.now();
+      function step(now) {
+        ctx.fillStyle = "#1d2620"; ctx.fillRect(0, 0, W, H);
+        for (var i = 0; i < N; i++) {
+          var o = obj[i]; o.x += o.vx; o.y += o.vy;
+          if (o.x < 0 || o.x > W) o.vx = -o.vx; if (o.y < 0 || o.y > H) o.vy = -o.vy;
+          ctx.fillStyle = cols[o.c]; ctx.fillRect(o.x, o.y, 6, 4);
+        }
+        frames++;
+        if (now - t0 < 2500) requestAnimationFrame(step);
+        else {
+          var fps = Math.round(frames / ((now - t0) / 1000));
+          var st = fps >= 45 ? "ok" : fps >= 25 ? "warn" : "fail";
+          setRow("fps", "Dieser Rechner", "Animation (1.500 Objekte)", st, fps + " Bilder/s " + (st === "ok" ? "– flüssig" : st === "warn" ? "– ruckelt leicht, Effekte sparsam" : "– zu langsam für Animationen"));
+          document.getElementById("benchnote").textContent = "Ergebnis: " + fps + " Bilder pro Sekunde.";
+          res();
+        }
+      }
+      requestAnimationFrame(step);
+    });
+  }
+
+  // ---------- Testliste extern ----------
+  var EXT = [
+    { id: "google",  g: "Grundverbindung", n: "Google (Vergleich)", k: "img", u: "https://www.google.com/favicon.ico" },
+    { id: "youtube", g: "Grundverbindung", n: "YouTube (Video-Einstieg)", k: "img", u: "https://www.youtube.com/favicon.ico" },
+    { id: "claude",  g: "Grundverbindung", n: "claude.ai", k: "fetch", u: "https://claude.ai/" },
+
+    { id: "ghpages", g: "Hosting der Spielseite", n: "GitHub Pages (github.io)", k: "fetch", u: "https://google.github.io/" },
+    { id: "ghraw",   g: "Hosting der Spielseite", n: "GitHub-Dateien (raw)", k: "img", u: "https://raw.githubusercontent.com/github/explore/main/topics/javascript/javascript.png" },
+    { id: "ghapi",   g: "Hosting der Spielseite", n: "GitHub API", k: "fetch", u: "https://api.github.com/zen" },
+    { id: "cfpages", g: "Hosting der Spielseite", n: "Cloudflare Pages", k: "fetch", u: "https://pages.cloudflare.com/" },
+    { id: "netlify", g: "Hosting der Spielseite", n: "Netlify", k: "fetch", u: "https://www.netlify.com/" },
+    { id: "vercel",  g: "Hosting der Spielseite", n: "Vercel", k: "fetch", u: "https://vercel.com/" },
+
+    { id: "cdnjs",   g: "Programmbibliotheken (CDN)", n: "cdnjs", k: "script", u: "https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.min.js" },
+    { id: "jsdelivr",g: "Programmbibliotheken (CDN)", n: "jsDelivr", k: "script", u: "https://cdn.jsdelivr.net/npm/lodash@4.17.21/lodash.min.js" },
+    { id: "unpkg",   g: "Programmbibliotheken (CDN)", n: "unpkg", k: "script", u: "https://unpkg.com/lodash@4.17.21/lodash.min.js" },
+
+    { id: "fbrtdb",  g: "Echtzeit-Synchronisation", n: "Firebase Realtime DB", k: "fetch", u: "https://argus-netztest-default-rtdb.firebaseio.com/.json" },
+    { id: "fbweb",   g: "Echtzeit-Synchronisation", n: "Firebase (Google)", k: "fetch", u: "https://firebase.google.com/" },
+    { id: "supa",    g: "Echtzeit-Synchronisation", n: "Supabase", k: "fetch", u: "https://supabase.com/" },
+    { id: "ws1",     g: "Echtzeit-Synchronisation", n: "WebSocket (Postman-Echo)", k: "ws", u: "wss://ws.postman-echo.com/raw" },
+    { id: "ws2",     g: "Echtzeit-Synchronisation", n: "WebSocket (websocket.org-Echo)", k: "ws", u: "wss://echo.websocket.org" }
+  ];
+
+  function runExt(t) {
+    setRow(t.id, t.g, t.n, "wait", "", t.k === "ws" ? "" : t.u);
+    var p = t.k === "img" ? probeImg(t.u) : t.k === "script" ? probeScript(t.u) : t.k === "ws" ? probeWs(t.u) : probeFetch(t.u);
+    return p.then(function (r) { setRow(t.id, t.g, t.n, r.status, r.text, t.k === "ws" ? "" : t.u); });
+  }
+
+  // ---------- Gesamtbild ----------
+  function st(id) { var r = get(id); return r ? r.status : "fail"; }
+  function any(ids, s) { return ids.some(function (id) { return st(id) === s; }); }
+
+  function summarize() {
+    var online = location.protocol !== "file:";
+    var onGh = online && /github\.io$/.test(location.hostname);
+    var staticOk = onGh || st("ghpages") === "ok" || online;
+    var staticMaybe = any(["ghpages", "cfpages", "netlify", "vercel"], "warn");
+    var wsOk = any(["ws1", "ws2"], "ok");
+    var fbOk = st("fbrtdb") === "ok" || st("fbrtdb") === "warn";
+    var cdnOk = any(["cdnjs", "jsdelivr", "unpkg"], "ok");
+    var lines = [], verdict;
+
+    if (staticOk && wsOk) {
+      verdict = "Variante A möglich: Spielseite extern hosten, Synchronisation per WebSocket.";
+    } else if (staticOk && fbOk) {
+      verdict = "Variante A wahrscheinlich möglich: Hosting geht, WebSocket nicht – Synchronisation über Firebase (HTTPS) prüfen.";
+    } else if (staticOk) {
+      verdict = "Hosting geht, Echtzeit nicht: Variante B (Raum-Server) oder C (ein PC) – mit FMZ klären.";
+    } else if (staticMaybe) {
+      verdict = "Unklar: Hosting-Dienste antworten, Inhalt nicht bestätigt – Links öffnen und prüfen.";
+    } else {
+      verdict = "Kein externes Hosting erreichbar: Variante B (Raum-Server, FMZ fragen), C (ein PC, mehrere Fenster) oder D (Papier). Für A′ den Test auf einem Privatgerät wiederholen.";
+    }
+    lines.push(online ? "Seite lief online (" + location.host + ") – damit ist dieser Webhost erreichbar." : "Seite lief als lokale Datei – lokale HTML-Dateien funktionieren.");
+    lines.push("Programmbibliotheken aus dem Netz: " + (cdnOk ? "ladbar." : "nicht ladbar – alles muss in die Spieldatei eingebaut werden."));
+    lines.push("WebSocket: " + (wsOk ? "funktioniert." : "blockiert oder unklar."));
+    var fps = get("fps");
+    if (fps) lines.push("Grafik: " + fps.text + ".");
+    document.getElementById("summary").innerHTML =
+      '<div class="big">' + esc(verdict) + "</div>" + lines.map(function (l) { return "<div>" + esc(l) + "</div>"; }).join("");
+    document.getElementById("summary").className = "";
+    summaryText = verdict + "\n" + lines.join("\n");
+    writeOut();
+  }
+
+  var summaryText = "";
+
+  function writeOut() {
+    var ort = document.getElementById("ort").value || "(nicht angegeben)";
+    var s = "ARGUS Netztest " + VERSION + "\n";
+    s += "Rechner/Ort: " + ort + "\n";
+    s += "Zeit: " + new Date().toLocaleString("de-DE") + "\n";
+    if (summaryText) s += "\nGESAMTBILD\n" + summaryText + "\n";
+    s += "\nEINZELERGEBNISSE\n";
+    var g = "";
+    rows.forEach(function (r) {
+      if (r.group !== g) { s += "\n[" + r.group + "]\n"; g = r.group; }
+      s += "- " + r.name + ": " + LABEL[r.status] + (r.text ? " – " + r.text : "") + "\n";
+    });
+    document.getElementById("out").value = s;
+  }
+
+  // ---------- Ablauf ----------
+  var running = false;
+  function runAll() {
+    if (running) return;
+    running = true;
+    var btn = document.getElementById("start");
+    btn.disabled = true;
+    document.getElementById("progress").textContent = "Test läuft …";
+    rows = []; summaryText = ""; render();
+    localChecks();
+    var chain = Promise.resolve();
+    // CDN-Skripte nacheinander (gemeinsame Variable), Rest parallel
+    var scripts = EXT.filter(function (t) { return t.k === "script"; });
+    var others = EXT.filter(function (t) { return t.k !== "script"; });
+    others.forEach(function (t) { setRow(t.id, t.g, t.n, "wait", "", t.k === "ws" ? "" : t.u); });
+    scripts.forEach(function (t) { setRow(t.id, t.g, t.n, "wait", "", t.u); });
+    scripts.forEach(function (t) { chain = chain.then(function () { return runExt(t); }); });
+    Promise.all([chain, Promise.all(others.map(runExt)), bench()]).then(function () {
+      summarize();
+      document.getElementById("progress").textContent = "Fertig. Jetzt Ton- und Fenstertest, dann Ergebnis sichern.";
+      btn.disabled = false; btn.textContent = "Test wiederholen";
+      running = false;
+    });
+  }
+
+  document.getElementById("start").onclick = runAll;
+  document.getElementById("ort").oninput = writeOut;
+
+  // Tontest
+  var actx = null;
+  document.getElementById("btnTon").onclick = function () {
+    try {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      actx = actx || new AC();
+      var o = actx.createOscillator(), g = actx.createGain();
+      o.frequency.value = 660; g.gain.value = 0.15;
+      o.connect(g); g.connect(actx.destination);
+      o.start(); o.stop(actx.currentTime + 0.6);
+      document.getElementById("tonJa").disabled = false;
+      document.getElementById("tonNein").disabled = false;
+    } catch (e) {
+      setRow("ton", "Handtests", "Ton hörbar", "fail", "Ton konnte nicht erzeugt werden");
+    }
+  };
+  document.getElementById("tonJa").onclick = function () { setRow("ton", "Handtests", "Ton hörbar", "ok", "Piepton gehört"); };
+  document.getElementById("tonNein").onclick = function () { setRow("ton", "Handtests", "Ton hörbar", "fail", "kein Ton – Lautsprecher stumm oder gesperrt"); };
+
+  // Fenstertest
+  var got = {};
+  try {
+    var bc = new BroadcastChannel("argus-netztest");
+    bc.onmessage = function () { got.bc = true; fensterUpdate(); };
+  } catch (e) {}
+  window.addEventListener("storage", function (e) { if (e.key === "argus-netztest-ping") { got.ls = true; fensterUpdate(); } });
+  function fensterUpdate() {
+    var ways = [];
+    if (got.bc) ways.push("BroadcastChannel");
+    if (got.ls) ways.push("localStorage");
+    setRow("fenster", "Handtests", "Zwei Fenster sprechen miteinander", ways.length ? "ok" : "fail",
+      ways.length ? "Nachricht empfangen über " + ways.join(" und ") : "keine Nachricht empfangen");
+  }
+  document.getElementById("btnFenster").onclick = function () {
+    got = {};
+    var w = null;
+    try { w = window.open(location.href.split("#")[0] + "#kind", "argus-kind"); } catch (e) {}
+    if (!w) {
+      setRow("fenster", "Handtests", "Zwei Fenster sprechen miteinander", "warn", "Pop-up blockiert – Seite in zweitem Tab mit #kind am Ende der Adresse öffnen");
+      return;
+    }
+    setRow("fenster", "Handtests", "Zwei Fenster sprechen miteinander", "wait", "warte auf Nachricht …");
+    setTimeout(function () { if (!got.bc && !got.ls) fensterUpdate(); }, 5000);
+  };
+
+  // Sichern
+  document.getElementById("btnCopy").onclick = function () {
+    var ta = document.getElementById("out");
+    function fallback() { ta.focus(); ta.select(); try { document.execCommand("copy"); } catch (e) {} }
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(ta.value).catch(fallback);
+    else fallback();
+  };
+  document.getElementById("btnSave").onclick = function () {
+    try {
+      var blob = new Blob([document.getElementById("out").value], { type: "text/plain;charset=utf-8" });
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "argus-netztest-ergebnis.txt";
+      document.body.appendChild(a); a.click(); a.remove();
+    } catch (e) { alert("Speichern nicht möglich – bitte kopieren oder fotografieren."); }
+  };
+
+  render();
+  runAll();
+})();
+</script>
+</body>
+</html>
